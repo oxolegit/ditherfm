@@ -8,7 +8,7 @@ import { DEFAULT_PARAMS } from '../viz/pipeline.js';
 import { PRESETS } from '../viz/presets.js';
 import { makePreset } from '../viz/random.js';
 import { Director } from '../viz/director.js';
-import { pickVideoType } from '../viz/record.js';
+import { pickVideoType, videoTypes, videoSize } from '../viz/record.js';
 import { makeSong, sectionAt, hourPlan, onAir, songLength, HOUR } from '../audio/lofi.js';
 
 let failed = 0;
@@ -192,6 +192,11 @@ const knownKeys = (preset) => Object.keys(preset.base).every((k) => k in DEFAULT
     const only = (...ok) => (t) => ok.includes(t);
     check('video prefers mp4', pickVideoType(only('video/webm', 'video/mp4'))?.ext === 'mp4');
     check('video falls back to webm', pickVideoType(only('video/webm;codecs=vp9,opus'))?.ext === 'webm');
+    check('webm stays as a fallback', videoTypes(only('video/mp4', 'video/webm')).map((v) => v.ext).join() === 'mp4,webm');
+    const fits = ([w, h], [mw, mh]) => w % 2 === 0 && h % 2 === 0 && w <= mw && h <= mh;
+    check('retina frame shrinks to 1080p', fits(videoSize(2561, 1441), [1920, 1080]), videoSize(2561, 1441).join('×'));
+    check('portrait frame fits 1080×1920', fits(videoSize(1179, 2555), [1080, 1920]), videoSize(1179, 2555).join('×'));
+    check('small odd frame only loses a pixel', videoSize(801, 451).join() === '800,450');
     check('no recorder, no video', pickVideoType(() => false) === null && pickVideoType() === null);
 }
 

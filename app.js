@@ -5,7 +5,7 @@ import { createFeatures } from './audio/features.js';
 import { Playlist } from './audio/playlist.js';
 import { renderTrack } from './audio/wav.js';
 import { Pipeline } from './viz/pipeline.js';
-import { VideoRecorder, pickVideoType } from './viz/record.js';
+import { VideoRecorder, videoTypes } from './viz/record.js';
 import { Director } from './viz/director.js';
 import { PRESETS, presetById } from './viz/presets.js';
 import { makePreset } from './viz/random.js';
@@ -379,7 +379,7 @@ els.wav.addEventListener('click', async () => {
 });
 
 // ─── Video export ───────────────────────────────────────────────────────────────────
-const videoType = pickVideoType();
+const types = videoTypes(), videoType = types[0] || null;
 let recording = null;
 
 function renderVideo() {
@@ -404,10 +404,17 @@ async function startVideo() {
             engine.pause();
             engine.seek(0);
         }
-        const rec = new VideoRecorder(els.view, sound, videoType);
+        const rec = new VideoRecorder(els.view, sound, types);
         rec.item = item;
         rec.settings = { ...engine.settings };
         recording = rec;
+        // An encoder that gives up mid-way is reported at once, not at the end of the track.
+        rec.done.catch(() => {
+            if (recording !== rec) return;
+            recording = null;
+            renderVideo();
+            fail(t().videoError);
+        });
         rec.start();
         renderVideo();
         await engine.play();
@@ -426,7 +433,7 @@ async function finishVideo() {
     if (!engine.radio) engine.pause();
     renderVideo();
     try {
-        download(await rec.stop(), exportName(rec.item, rec.settings, videoType.ext));
+        download(await rec.stop(), exportName(rec.item, rec.settings, rec.ext));
     } catch {
         fail(t().videoError);
     }
@@ -616,6 +623,7 @@ function frame(now) {
     } else a = features.idle(dt);
     const { params, snippet } = director.update(dt, a, clock);
     pipeline.render(params, snippet, a, clock, { ...look(), dither: state.dither });
+    recording?.draw();
     requestAnimationFrame(frame);
 }
 
