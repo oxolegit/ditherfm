@@ -15,7 +15,7 @@ A music visualizer in the spirit of MilkDrop and projectM, drawn with two-color 
 - **Palettes.** Eight two-color pairs from [bitmap](https://bitmap.mslv.space) plus custom colors.
 - **Playlist.** Multiple files, advance to the next track, repeat.
 - **WAV export.** A nightcore version of the current track, rendered through the same chain used for playback.
-- **Video export.** The current track with its visuals, recorded in real time to MP4 (WebM in browsers that cannot write MP4, such as Firefox).
+- **Video export.** The current track with its visuals, rendered frame by frame: the sound goes through the same chain as the WAV, each frame is drawn from it and encoded with WebCodecs at constant quality (H.264, HEVC or AV1, whatever the browser offers) into MP4. 1920×1080 at 60 fps on a computer and 1080×1920 on a phone by default; the frame rate is steady on any machine. The radio, and browsers without WebCodecs, record live with MediaRecorder instead.
 - **Lo-fi FM.** A shared generative radio: songs are written from a seed and synthesised in the browser, and what plays is a function of UTC time, so every listener hears the same bar at the same moment. Bass, reverb and the visuals apply; speed stays at ×1 to keep the air in sync.
 - **Volume** and a mute button; the visuals don't depend on volume, and the WAV is saved at full volume.
 - **Fullscreen**, Media Session (media keys), interface in Russian and English, settings are remembered.
@@ -54,6 +54,9 @@ npm test
 | `viz/random.js` | preset from a seed |
 | `viz/director.js` | preset switching and transitions |
 | `viz/record.js` | video recording: canvas and sound to MP4 / WebM |
+| `viz/offline.js` | frame-by-frame video: offline sound, visuals per frame, WebCodecs, MP4 |
+| `audio/analysis.js` | what an AnalyserNode would report, computed from a rendered buffer |
+| `vendor/mp4-muxer.js` | [mp4-muxer](https://github.com/Vanilagy/mp4-muxer) 5.2.2 by Vanilagy, MIT |
 | `gen/rng.js`, `gen/bluenoise.js` | seed generator and blue noise map from bitmap |
 | `app.js`, `i18n.js` | interface and translations |
 | `tools/og.html` | page used to capture `og.png` |

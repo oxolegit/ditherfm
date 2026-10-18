@@ -8,6 +8,7 @@ import { DEFAULT_PARAMS } from '../viz/pipeline.js';
 import { PRESETS } from '../viz/presets.js';
 import { makePreset } from '../viz/random.js';
 import { Director } from '../viz/director.js';
+import { createAnalysis } from '../audio/analysis.js';
 import { pickVideoType, videoTypes, defaultVideo, parseSize, videoBitrate } from '../viz/record.js';
 import { makeSong, sectionAt, hourPlan, onAir, songLength, HOUR } from '../audio/lofi.js';
 
@@ -185,6 +186,20 @@ const knownKeys = (preset) => Object.keys(preset.base).every((k) => k in DEFAULT
     check('songs turn over into the next hour', onAir((hour + 1) * HOUR - 0.001).song.seed.startsWith(`${hour}-`)
         && onAir((hour + 1) * HOUR).song.seed === `${hour + 1}-0`);
     check('a song lasts a couple of minutes', songLength(a) > 80 && songLength(a) < 180, `${songLength(a).toFixed(0)} s`);
+}
+
+// The offline analysis matches what an AnalyserNode reports, so offline video moves like the live one.
+{
+    const sr = 48000, an = createAnalysis(2048), sine = (f, amp) => Float32Array.from({ length: sr }, (_, i) => amp * Math.sin((2 * Math.PI * f * i) / sr));
+    const bin = sr / 2048, tone = sine(bin * 40, 0.5);
+    const { mag, waves } = an.at([tone, tone], 24000);
+    let peak = 0;
+    for (let i = 1; i < mag.length; i++) if (mag[i] > mag[peak]) peak = i;
+    check('analysis finds the tone', peak === 40);
+    check('analysis uses the analyser scale', Math.abs(mag[40] - 0.5 * 0.42 / 2) < 0.002, mag[40].toFixed(4));
+    check('waveform ends at the moment', waves[0][2047] === tone[23999]);
+    const silence = an.at([new Float32Array(10)], 5).mag;
+    check('before the start is silence', silence.every((v) => v === 0));
 }
 
 // Video export picks MP4 when the browser can write it, WebM otherwise.

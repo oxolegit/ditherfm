@@ -29,9 +29,18 @@ export const renderedLength = (samples, sampleRate, { rate, reverb }) =>
 
 // file → Blob (audio/wav). onProgress gets 0…1 where the browser can report it.
 export async function renderTrack(file, settings, onProgress = () => {}) {
+    const out = await renderAudio(file, settings, onProgress);
+    const channels = [];
+    for (let c = 0; c < out.numberOfChannels; c++) channels.push(out.getChannelData(c));
+    return new Blob([encodeWAV(channels, out.sampleRate)], { type: 'audio/wav' });
+}
+
+// file → AudioBuffer with the sound settings applied, at the track's own rate or a given one.
+export async function renderAudio(file, settings, onProgress = () => {}, sampleRate) {
     const data = await file.arrayBuffer();
     const decoded = await new OfflineAudioContext(2, 1, 44100).decodeAudioData(data);
-    const rate = decoded.sampleRate, length = renderedLength(decoded.length, rate, settings);
+    const rate = sampleRate || decoded.sampleRate;
+    const length = renderedLength(Math.round((decoded.length * rate) / decoded.sampleRate), rate, settings);
     const ctx = new OfflineAudioContext(2, length, rate);
 
     const source = ctx.createBufferSource();
@@ -51,7 +60,5 @@ export async function renderTrack(file, settings, onProgress = () => {}) {
 
     const out = await ctx.startRendering();
     onProgress(1);
-    const channels = [];
-    for (let c = 0; c < out.numberOfChannels; c++) channels.push(out.getChannelData(c));
-    return new Blob([encodeWAV(channels, rate)], { type: 'audio/wav' });
+    return out;
 }

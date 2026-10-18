@@ -5,7 +5,8 @@ import { createFeatures } from './audio/features.js';
 import { Playlist } from './audio/playlist.js';
 import { renderTrack } from './audio/wav.js';
 import { Pipeline } from './viz/pipeline.js';
-import { VideoRecorder, videoTypes, VIDEO_SIZES, VIDEO_FPS, defaultVideo, parseSize } from './viz/record.js';
+import { VideoRecorder, videoTypes, VIDEO_SIZES, VIDEO_FPS, defaultVideo, parseSize, videoBitrate } from './viz/record.js';
+import { renderVideo as renderOffline, offlineVideo, supportedCodecs, CODECS } from './viz/offline.js';
 import { Director } from './viz/director.js';
 import { PRESETS, presetById } from './viz/presets.js';
 import { makePreset } from './viz/random.js';
@@ -30,7 +31,7 @@ const els = {
     modes: $('modes'), rate: $('rate'), rateOut: $('rateOut'), bass: $('bass'), bassOut: $('bassOut'), reverb: $('reverb'), reverbOut: $('reverbOut'),
     preset: $('preset'), nextPreset: $('nextPreset'), randomPreset: $('randomPreset'), lock: $('lock'),
     palettes: $('palettes'), customColors: $('customColors'), inkColor: $('inkColor'), paperColor: $('paperColor'),
-    dither: $('dither'), px: $('px'), pxOut: $('pxOut'), wav: $('wav'), video: $('video'), videoSize: $('videoSize'), videoFps: $('videoFps'),
+    dither: $('dither'), px: $('px'), pxOut: $('pxOut'), wav: $('wav'), video: $('video'), videoSize: $('videoSize'), videoFps: $('videoFps'), videoCodec: $('videoCodec'), videoHint: $('videoHint'),
     frame: $('frame'), view: $('view'), empty: $('empty'), dropHint: $('dropHint'), fail: $('fail'), files: $('files'), moreFiles: $('moreFiles'),
     meta: $('meta'), play: $('play'), prev: $('prev'), next: $('next'), seek: $('seek'), time: $('time'), fullscreen: $('fullscreen'),
     radio: $('radio'), radioStart: $('radioStart'),
@@ -45,7 +46,7 @@ const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, 
 const { size: videoSize, fps: videoFps } = defaultVideo(phone);
 
 const state = {
-    videoSize, videoFps,
+    videoSize, videoFps, videoCodec: 'avc',
     ...MODES.nightcore, palette: 'cv', ink: '#3f3a39', paper: '#edf2f4', dither: DEFAULT_DITHER, px: 3,
     preset: null, locked: false, repeat: true, volume: 0.5, muted: false, lang: detectLang(),
 };
@@ -66,6 +67,7 @@ function loadSettings() {
     state.muted = s.muted === true;
     if (parseSize(s.videoSize)) state.videoSize = s.videoSize;
     if (VIDEO_FPS.includes(s.videoFps)) state.videoFps = s.videoFps;
+    if (s.videoCodec in CODECS) state.videoCodec = s.videoCodec;
 }
 
 let saveTimer = 0;
@@ -406,16 +408,68 @@ function buildVideoOptions() {
 }
 els.videoSize.addEventListener('change', () => { state.videoSize = els.videoSize.value; save(); });
 els.videoFps.addEventListener('change', () => { state.videoFps = +els.videoFps.value; save(); });
+els.videoCodec.addEventListener('change', () => { state.videoCodec = els.videoCodec.value; save(); });
+
+// Frame-by-frame export needs WebCodecs; the codecs on offer are the ones this browser encodes.
+let codecs = [];
+let rendering = null, renderProgress = 0;
+if (offlineVideo()) {
+    supportedCodecs(1920, 1080, 30).then((list) => {
+        codecs = list;
+        els.videoCodec.replaceChildren(...list.map((id) => Object.assign(document.createElement('option'), { value: id, textContent: t().codecs[id] })));
+        if (list.includes(state.videoCodec)) els.videoCodec.value = state.videoCodec;
+        els.videoCodec.hidden = !list.length;
+        renderVideo();
+    });
+}
+
+// The current track rendered frame by frame, with the look and the sound as they are now.
+async function exportOffline() {
+    const item = playlist.current;
+    if (!item || rendering) return;
+    const [w, h] = parseSize(state.videoSize), fps = state.videoFps, settings = { ...engine.settings };
+    const job = {
+        file: item.file, settings, look: look(), dither: state.dither, px: state.px,
+        preset: director.current?.preset || PRESETS[0], locked: director.locked,
+        size: [w, h], fps, codec: codecs.includes(state.videoCodec) ? state.videoCodec : codecs[0], bitrate: videoBitrate(w, h, fps),
+    };
+    rendering = new AbortController();
+    renderProgress = 0;
+    renderVideo();
+    try {
+        const blob = await renderOffline(job, {
+            signal: rendering.signal,
+            onProgress: (p) => {
+                renderProgress = p;
+                renderVideo();
+            },
+        });
+        download(blob, exportName(item, settings, 'mp4'));
+    } catch (error) {
+        if (error?.name !== 'AbortError') {
+            console.error(error);
+            fail(t().videoError);
+        }
+    }
+    rendering = null;
+    renderVideo();
+}
 
 function renderVideo() {
     const radio = engine.radio;
     const d = radio ? radio.duration : audio.duration, now = radio ? radio.time : audio.currentTime;
-    els.video.textContent = recording
-        ? t().videoBusy.replace('{p}', Number.isFinite(d) && d ? Math.round((now / d) * 100) : 0)
-        : t().video.replace('{ext}', (videoType?.ext || 'mp4').toUpperCase());
-    els.video.title = videoType ? '' : t().noVideo;
-    els.video.setAttribute('aria-pressed', String(!!recording));
-    els.videoSize.disabled = els.videoFps.disabled = !videoType || !!recording;
+    // Tracks are rendered frame by frame where the browser can; the radio is always recorded live.
+    const offline = !radio && codecs.length > 0;
+    els.video.textContent = rendering
+        ? t().videoRender.replace('{p}', Math.round(renderProgress * 100))
+        : recording
+            ? t().videoBusy.replace('{p}', Number.isFinite(d) && d ? Math.round((now / d) * 100) : 0)
+            : t().video.replace('{ext}', (offline ? 'mp4' : videoType?.ext || 'mp4').toUpperCase());
+    els.video.title = videoType || offline ? '' : t().noVideo;
+    els.video.setAttribute('aria-pressed', String(!!(recording || rendering)));
+    els.videoSize.disabled = els.videoFps.disabled = (!videoType && !offline) || !!recording || !!rendering;
+    els.videoCodec.disabled = !offline || !!rendering;
+    els.videoHint.textContent = offline ? t().videoHintOffline : t().videoHint;
 }
 
 // From the top of the current track, with the sound and the look as they are now. The radio
@@ -508,7 +562,12 @@ function toggleRadio() {
 els.radio.addEventListener('click', toggleRadio);
 els.radioStart.addEventListener('click', radioOn);
 
-els.video.addEventListener('click', () => (recording ? finishVideo() : startVideo()));
+els.video.addEventListener('click', () => {
+    if (rendering) return rendering.abort();
+    if (recording) return finishVideo();
+    if (!engine.radio && codecs.length) return exportOffline();
+    startVideo();
+});
 audio.addEventListener('timeupdate', () => recording && renderVideo());
 
 // ─── Visuals ────────────────────────────────────────────────────────────────────────
