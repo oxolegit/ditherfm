@@ -2,61 +2,61 @@
 
 https://dither.mslv.space
 
-Визуализатор музыки в духе MilkDrop и projectM, нарисованный дизерингом в две краски. Перетащите на страницу mp3, включите найткор и смотрите. Файлы никуда не загружаются: звук обрабатывается и рисуется прямо в браузере.
+A music visualizer in the spirit of MilkDrop and projectM, drawn with two-color dithering. Drop an mp3 onto the page, turn on nightcore and watch. Files are never uploaded anywhere: the audio is processed and rendered right in the browser.
 
 ![ditherfm](og.png)
 
-## Что умеет
+## Features
 
-- **Найткор.** Скорость и тон меняются вместе, как в настоящем найткоре. Режимы Оригинал, Nightcore (×1.25), Hyper (×1.4), Daycore (×0.8 с реверберацией) и ручная настройка: скорость 0.5–2×, подъём баса до 12 дБ, реверб. Лимитер на выходе не даёт басу клиппировать.
-- **Визуализация как в MilkDrop.** Каждый кадр — прошлый кадр, пропущенный через поле зума, вращения и warp-искажений, с затуханием; поверх рисуется волна или спектр, пульсирующие фигуры и рамка. Семь режимов волны: круг, осциллограф, стерео XY, две линии, спектр, спираль, радиальный спектр.
-- **Пресеты.** Пятнадцать ручных и бесконечно много сгенерированных из seed. Пресет меняется на сильной доле, параметры плавно перетекают, а картинка продолжается из старого пресета в новый. Замок оставляет текущий.
-- **Дизеринг.** Bayer 2/4/8, blue noise, IGN, растр точками и линиями, порог — прямо в шейдере, без мерцания в движении. Размер пикселя от 1 до 8.
-- **Палитры.** Восемь двухцветных пар из [bitmap](https://bitmap.mslv.space) и свои цвета.
-- **Плейлист.** Несколько файлов, переход к следующему треку, повтор.
-- **Экспорт в WAV.** Найткор-версия текущего трека, отрендеренная через ту же цепочку, что и при прослушивании.
-- **Громкость** и кнопка без звука; визуализация от громкости не зависит, WAV сохраняется в полной.
-- **Во весь экран**, Media Session (клавиши мультимедиа), интерфейс на русском и английском, настройки запоминаются.
+- **Nightcore.** Speed and pitch change together, like real nightcore. Modes: Original, Nightcore (×1.25), Hyper (×1.4), Daycore (×0.8 with reverb) and manual: speed 0.5–2×, bass boost up to 12 dB, reverb. A limiter on the output keeps the bass from clipping.
+- **MilkDrop-style visuals.** Each frame is the previous frame passed through a zoom, rotation and warp field with decay; a waveform or spectrum, pulsing shapes and a border are drawn on top. Seven wave modes: circle, oscilloscope, stereo XY, two lines, spectrum, spiral, radial spectrum.
+- **Presets.** Fifteen hand-made ones and endlessly many generated from a seed. Presets switch on a strong beat, parameters blend smoothly, and the image flows from the old preset into the new one. The lock keeps the current one.
+- **Dithering.** Bayer 2/4/8, blue noise, IGN, dot and line halftone, threshold — right in the shader, with no flicker in motion. Pixel size from 1 to 8.
+- **Palettes.** Eight two-color pairs from [bitmap](https://bitmap.mslv.space) plus custom colors.
+- **Playlist.** Multiple files, advance to the next track, repeat.
+- **WAV export.** A nightcore version of the current track, rendered through the same chain used for playback.
+- **Volume** and a mute button; the visuals don't depend on volume, and the WAV is saved at full volume.
+- **Fullscreen**, Media Session (media keys), interface in Russian and English, settings are remembered.
 
-Горячие клавиши: пробел — пауза, ← → — перемотка, ↑ ↓ — трек, − + — громкость, M — без звука, N — следующий пресет, R — случайный, L — замок, F — во весь экран.
+Hotkeys: Space — pause, ← → — seek, ↑ ↓ — track, − + — volume, M — mute, N — next preset, R — random, L — lock, F — fullscreen.
 
-Нужен браузер с WebGL2. Звук со стриминговых сервисов (Spotify и др.) сайтам недоступен, поэтому работают только файлы.
+Requires a browser with WebGL2. Audio from streaming services (Spotify, etc.) isn't accessible to websites, so only files work.
 
-## Запуск
+## Running
 
-Сборка не нужна: это статический сайт на ES-модулях без зависимостей.
+No build step: it's a static site built on ES modules with no dependencies.
 
 ```sh
 npx serve .
 ```
 
-Проверки без браузера (полосы и доли, найткор-настройки, WAV, плейлист, пресеты, переходы):
+Browser-free checks (bands and beats, nightcore settings, WAV, playlist, presets, transitions):
 
 ```sh
 npm test
 ```
 
-## Устройство
+## How it works
 
-| Файл | Что делает |
+| File | What it does |
 | --- | --- |
-| `audio/engine.js` | воспроизведение: скорость без коррекции тона → полка басов → реверб → лимитер |
-| `audio/features.js` | bass / mid / treb относительно среднего, сглаженные версии, доли, волна, спектр |
-| `audio/playlist.js` | очередь треков |
-| `audio/wav.js` | офлайн-рендер трека и WAV-энкодер |
-| `viz/gl.js` | обёртки WebGL2: программы, буферы, ping-pong |
-| `viz/pipeline.js` | кадр: warp обратной связи → волна → дизеринг в две краски |
-| `viz/dither.js` | пороги дизеринга на GLSL |
-| `viz/presets.js` | ручные пресеты |
-| `viz/random.js` | пресет из seed |
-| `viz/director.js` | смена пресетов и переходы |
-| `gen/rng.js`, `gen/bluenoise.js` | seed-генератор и карта blue noise из bitmap |
-| `app.js`, `i18n.js` | интерфейс и переводы |
-| `tools/og.html` | страница, с которой снимается `og.png` |
+| `audio/engine.js` | playback: speed without pitch correction → bass shelf → reverb → limiter |
+| `audio/features.js` | bass / mid / treb relative to average, smoothed versions, beats, waveform, spectrum |
+| `audio/playlist.js` | track queue |
+| `audio/wav.js` | offline track rendering and WAV encoder |
+| `viz/gl.js` | WebGL2 wrappers: programs, buffers, ping-pong |
+| `viz/pipeline.js` | frame: feedback warp → wave → two-color dithering |
+| `viz/dither.js` | dithering thresholds in GLSL |
+| `viz/presets.js` | hand-made presets |
+| `viz/random.js` | preset from a seed |
+| `viz/director.js` | preset switching and transitions |
+| `gen/rng.js`, `gen/bluenoise.js` | seed generator and blue noise map from bitmap |
+| `app.js`, `i18n.js` | interface and translations |
+| `tools/og.html` | page used to capture `og.png` |
 
-### Свой пресет
+### Custom preset
 
-Пресет — объект в `viz/presets.js`: базовые параметры (`zoom`, `rot`, `warp`, `decay`, `waveMode`, `shapeSides`… — полный список в `DEFAULT_PARAMS` в `viz/pipeline.js`), функция `frame(p, a, t, s)`, которая каждый кадр двигает параметры от музыки (`a.bass`, `a.mid_att`, `a.beat`…), и необязательный `warp` — строка GLSL, выполняемая для каждого пикселя, как per-pixel код в MilkDrop:
+A preset is an object in `viz/presets.js`: base parameters (`zoom`, `rot`, `warp`, `decay`, `waveMode`, `shapeSides`… — the full list is in `DEFAULT_PARAMS` in `viz/pipeline.js`), a `frame(p, a, t, s)` function that moves parameters with the music every frame (`a.bass`, `a.mid_att`, `a.beat`…), and an optional `warp` — a GLSL string executed for every pixel, like per-pixel code in MilkDrop:
 
 ```js
 {
@@ -67,6 +67,6 @@ npm test
 }
 ```
 
-## Лицензия
+## License
 
-[MIT with Attribution](LICENSE) © 2026 oxolegit. При публичном использовании нужна видимая ссылка на этот репозиторий: https://github.com/oxolegit/ditherfm
+[MIT with Attribution](LICENSE) © 2026 oxolegit. Public use requires a visible link to this repository: https://github.com/oxolegit/ditherfm
