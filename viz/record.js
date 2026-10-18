@@ -2,7 +2,8 @@
 // MP4 where the browser can write it (Chrome, Edge, Safari), WebM otherwise (Firefox).
 
 export const VIDEO_TYPES = [
-    ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'mp4'],
+    // High profile, level 4.2: enough for 1080p at 60 fps.
+    ['video/mp4;codecs=avc1.64002a,mp4a.40.2', 'mp4'],
     ['video/mp4;codecs=avc1,mp4a.40.2', 'mp4'],
     ['video/mp4;codecs=avc1,opus', 'mp4'],
     ['video/mp4', 'mp4'],
@@ -18,22 +19,28 @@ export function videoTypes(isSupported = (t) => globalThis.MediaRecorder?.isType
 
 export const pickVideoType = (isSupported) => videoTypes(isSupported)[0] || null;
 
-// H.264 encoders refuse odd sizes and, at their usual levels, anything past 1080p: the frame is
-// scaled to fit 1920×1080 and rounded down to even numbers.
-export function videoSize(w, h, max = [1920, 1080]) {
-    const [mw, mh] = w >= h ? max : [max[1], max[0]];
-    const k = Math.min(1, mw / w, mh / h);
-    return [Math.max(2, Math.floor((w * k) / 2) * 2), Math.max(2, Math.floor((h * k) / 2) * 2)];
+// Recording sizes: the visuals are rendered straight at these, not scaled from the screen.
+export const VIDEO_SIZES = [[1920, 1080], [1080, 1920], [1080, 1080], [1280, 720], [720, 1280]];
+export const VIDEO_FPS = [30, 60];
+
+// Landscape at 60 fps on a computer; on a phone, portrait at 30, easier on its encoder.
+export function defaultVideo(phone) {
+    return phone ? { size: '1080x1920', fps: 30 } : { size: '1920x1080', fps: 60 };
 }
 
+export const parseSize = (v) => {
+    const m = /^(\d+)x(\d+)$/.exec(v || '');
+    return m && VIDEO_SIZES.find(([w, h]) => w === +m[1] && h === +m[2]) || null;
+};
+
+// Dithering is per-pixel noise to an encoder, so it gets a generous bitrate.
+export const videoBitrate = (w, h, fps) => Math.round(Math.min(24e6, Math.max(4e6, w * h * fps * 0.2)));
+
 export class VideoRecorder {
+    // The canvas must already be at the recording size.
     constructor(canvas, audioStream, types, fps = 30) {
-        this.source = canvas;
-        this.frame = document.createElement('canvas');
-        [this.frame.width, this.frame.height] = videoSize(canvas.width, canvas.height);
-        this.paint = this.frame.getContext('2d', { alpha: false });
-        this.draw();
-        this.stream = new MediaStream([...this.frame.captureStream(fps).getVideoTracks(), ...audioStream.getAudioTracks()]);
+        this.stream = new MediaStream([...canvas.captureStream(fps).getVideoTracks(), ...audioStream.getAudioTracks()]);
+        this.bitrate = videoBitrate(canvas.width, canvas.height, fps);
         this.types = [...types];
         this.done = new Promise((resolve, reject) => {
             this.resolve = resolve;
@@ -50,8 +57,7 @@ export class VideoRecorder {
         this.type = type;
         this.ext = type.ext;
         this.chunks = [];
-        // Dithering is per-pixel noise to an encoder, so it gets a generous bitrate.
-        const rec = new MediaRecorder(this.stream, { mimeType: type.mime, videoBitsPerSecond: 12e6, audioBitsPerSecond: 192e3 });
+        const rec = new MediaRecorder(this.stream, { mimeType: type.mime, videoBitsPerSecond: this.bitrate, audioBitsPerSecond: 192e3 });
         this.recorder = rec;
         rec.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
         rec.onstop = () => rec === this.recorder && !this.failed && this.resolve(new Blob(this.chunks, { type: type.mime.split(';')[0] }));
@@ -65,13 +71,6 @@ export class VideoRecorder {
             this.failed = true;
             this.reject(e.error || e);
         };
-    }
-
-    // Copies the latest frame; called right after each render, while the WebGL buffer is intact.
-    draw() {
-        const { width, height } = this.frame;
-        this.paint.imageSmoothingEnabled = width < this.source.width;
-        this.paint.drawImage(this.source, 0, 0, width, height);
     }
 
     start() {

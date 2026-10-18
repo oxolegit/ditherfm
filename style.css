@@ -299,6 +299,17 @@ input[type="color"] {
     height: 100%;
 }
 
+/* Recording: the picture keeps the video's proportions. */
+.frame.recording canvas {
+    object-fit: contain;
+}
+
+.video-opts select {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+}
+
 .frame.dragging {
     outline: 1px solid var(--fg);
     outline-offset: 4px;

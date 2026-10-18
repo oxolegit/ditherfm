@@ -97,6 +97,10 @@
                 <legend data-i18n="export">Экспорт</legend>
                 <button type="button" class="ghost" id="wav" disabled data-i18n="wav">Скачать WAV</button>
                 <p class="note muted" id="wavNote" data-i18n="wavHint">Текущий трек с настройками звука</p>
+                <div class="row video-opts">
+                    <select id="videoSize" data-i18n-attr="aria-label:videoSize" aria-label="Разрешение"></select>
+                    <select id="videoFps" data-i18n-attr="aria-label:videoFps" aria-label="Кадров в секунду"></select>
+                </div>
                 <button type="button" class="ghost" id="video" disabled>Записать MP4</button>
                 <p class="note muted" data-i18n="videoHint">Трек с начала до конца, в реальном времени — не сворачивайте вкладку</p>
             </fieldset>

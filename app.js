@@ -5,7 +5,7 @@ import { createFeatures } from './audio/features.js';
 import { Playlist } from './audio/playlist.js';
 import { renderTrack } from './audio/wav.js';
 import { Pipeline } from './viz/pipeline.js';
-import { VideoRecorder, videoTypes } from './viz/record.js';
+import { VideoRecorder, videoTypes, VIDEO_SIZES, VIDEO_FPS, defaultVideo, parseSize } from './viz/record.js';
 import { Director } from './viz/director.js';
 import { PRESETS, presetById } from './viz/presets.js';
 import { makePreset } from './viz/random.js';
@@ -30,7 +30,7 @@ const els = {
     modes: $('modes'), rate: $('rate'), rateOut: $('rateOut'), bass: $('bass'), bassOut: $('bassOut'), reverb: $('reverb'), reverbOut: $('reverbOut'),
     preset: $('preset'), nextPreset: $('nextPreset'), randomPreset: $('randomPreset'), lock: $('lock'),
     palettes: $('palettes'), customColors: $('customColors'), inkColor: $('inkColor'), paperColor: $('paperColor'),
-    dither: $('dither'), px: $('px'), pxOut: $('pxOut'), wav: $('wav'), video: $('video'),
+    dither: $('dither'), px: $('px'), pxOut: $('pxOut'), wav: $('wav'), video: $('video'), videoSize: $('videoSize'), videoFps: $('videoFps'),
     frame: $('frame'), view: $('view'), empty: $('empty'), dropHint: $('dropHint'), fail: $('fail'), files: $('files'), moreFiles: $('moreFiles'),
     meta: $('meta'), play: $('play'), prev: $('prev'), next: $('next'), seek: $('seek'), time: $('time'), fullscreen: $('fullscreen'),
     radio: $('radio'), radioStart: $('radioStart'),
@@ -41,7 +41,11 @@ const els = {
 const KEY = 'ditherfm:settings';
 const hex = (v) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v.toLowerCase() : null);
 
+const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 768;
+const { size: videoSize, fps: videoFps } = defaultVideo(phone);
+
 const state = {
+    videoSize, videoFps,
     ...MODES.nightcore, palette: 'cv', ink: '#3f3a39', paper: '#edf2f4', dither: DEFAULT_DITHER, px: 3,
     preset: null, locked: false, repeat: true, volume: 0.5, muted: false, lang: detectLang(),
 };
@@ -60,6 +64,8 @@ function loadSettings() {
     state.repeat = s.repeat !== false;
     if (s.vol >= 0 && s.vol <= 1) state.volume = +s.vol;
     state.muted = s.muted === true;
+    if (parseSize(s.videoSize)) state.videoSize = s.videoSize;
+    if (VIDEO_FPS.includes(s.videoFps)) state.videoFps = s.videoFps;
 }
 
 let saveTimer = 0;
@@ -381,6 +387,25 @@ els.wav.addEventListener('click', async () => {
 // ─── Video export ───────────────────────────────────────────────────────────────────
 const types = videoTypes(), videoType = types[0] || null;
 let recording = null;
+// While recording, the visuals are drawn at the video's own size; the screen shows it letterboxed.
+let captureSize = null;
+
+function capture(size) {
+    captureSize = size;
+    els.frame.classList.toggle('recording', !!size);
+    resize();
+    renderTransport();
+}
+
+function buildVideoOptions() {
+    const option = (value, text) => Object.assign(document.createElement('option'), { value, textContent: text });
+    els.videoSize.replaceChildren(...VIDEO_SIZES.map(([w, h]) => option(`${w}x${h}`, `${w}×${h}`)));
+    els.videoFps.replaceChildren(...VIDEO_FPS.map((f) => option(f, `${f} fps`)));
+    els.videoSize.value = state.videoSize;
+    els.videoFps.value = state.videoFps;
+}
+els.videoSize.addEventListener('change', () => { state.videoSize = els.videoSize.value; save(); });
+els.videoFps.addEventListener('change', () => { state.videoFps = +els.videoFps.value; save(); });
 
 function renderVideo() {
     const radio = engine.radio;
@@ -390,6 +415,7 @@ function renderVideo() {
         : t().video.replace('{ext}', (videoType?.ext || 'mp4').toUpperCase());
     els.video.title = videoType ? '' : t().noVideo;
     els.video.setAttribute('aria-pressed', String(!!recording));
+    els.videoSize.disabled = els.videoFps.disabled = !videoType || !!recording;
 }
 
 // From the top of the current track, with the sound and the look as they are now. The radio
@@ -404,7 +430,8 @@ async function startVideo() {
             engine.pause();
             engine.seek(0);
         }
-        const rec = new VideoRecorder(els.view, sound, types);
+        capture(parseSize(state.videoSize));
+        const rec = new VideoRecorder(els.view, sound, types, state.videoFps);
         rec.item = item;
         rec.settings = { ...engine.settings };
         recording = rec;
@@ -412,6 +439,7 @@ async function startVideo() {
         rec.done.catch(() => {
             if (recording !== rec) return;
             recording = null;
+            capture(null);
             renderVideo();
             fail(t().videoError);
         });
@@ -420,6 +448,7 @@ async function startVideo() {
         await engine.play();
     } catch {
         recording = null;
+        capture(null);
         renderVideo();
         fail(t().videoError);
     }
@@ -431,9 +460,11 @@ async function finishVideo() {
     recording = null;
     // A track stops at its end; the radio plays on.
     if (!engine.radio) engine.pause();
+    const file = rec.stop();
+    capture(null);
     renderVideo();
     try {
-        download(await rec.stop(), exportName(rec.item, rec.settings, rec.ext));
+        download(await file, exportName(rec.item, rec.settings, rec.ext));
     } catch {
         fail(t().videoError);
     }
@@ -596,6 +627,11 @@ function updateMeta() {
 
 function resize() {
     if (!pipeline) return;
+    // At 1080p one "pixel" of the setting is two video pixels, as on a 2× screen.
+    if (captureSize) {
+        const [w, h] = captureSize, scale = Math.min(w, h) / 540;
+        return pipeline.resize(w / scale, h / scale, scale, state.px);
+    }
     const r = els.view.getBoundingClientRect();
     pipeline.resize(r.width, r.height, Math.min(window.devicePixelRatio || 1, 2), state.px);
 }
@@ -623,7 +659,6 @@ function frame(now) {
     } else a = features.idle(dt);
     const { params, snippet } = director.update(dt, a, clock);
     pipeline.render(params, snippet, a, clock, { ...look(), dither: state.dither });
-    recording?.draw();
     requestAnimationFrame(frame);
 }
 
@@ -688,6 +723,7 @@ document.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('clic
 
 // ─── Start ──────────────────────────────────────────────────────────────────────────
 buildPalettes();
+buildVideoOptions();
 setLang(state.lang);
 renderLook();
 director.set(presetFromId(state.preset) || PRESETS[Math.floor(Math.random() * PRESETS.length)], { instant: true });
