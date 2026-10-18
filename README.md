@@ -6,6 +6,12 @@ A music visualizer in the spirit of MilkDrop and projectM, drawn with two-color 
 
 ![ditherfm](og.png)
 
+![Player interface](docs/interface.png)
+
+![Visualisation recording](docs/demo.gif)
+
+[Recording in MP4](docs/demo.mp4)
+
 ## Features
 
 - **Nightcore.** Speed and pitch change together, like real nightcore. Modes: Original, Nightcore (×1.25), Hyper (×1.4), Daycore (×0.8 with reverb) and manual: speed 0.5–2×, bass boost up to 12 dB, reverb. A limiter on the output keeps the bass from clipping.
