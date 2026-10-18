@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<!-- The link preview, og.png: the real visualiser on the right, captured by a headless browser.
+     npx serve . then, from the repo root:
+     msedge --headless --enable-unsafe-swiftshader --window-size=1200,630 --virtual-time-budget=8000 --screenshot=og.png http://localhost:3000/tools/og -->
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>ditherfm og</title>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; box-sizing: border-box; }
+        body { width: 1200px; height: 630px; display: grid; grid-template-columns: 600px 600px; background: #EDF2F4; color: #3F3A39; font-family: 'Geist', sans-serif; overflow: hidden; }
+        .text { display: flex; flex-direction: column; padding: 58px 56px 52px; }
+        h1 { font-weight: 500; font-size: 92px; letter-spacing: -0.03em; line-height: 1.1; }
+        p { font-size: 24px; line-height: 1.4; margin-top: 30px; max-width: 330px; }
+        .foot { margin-top: auto; display: flex; justify-content: space-between; font-size: 21px; }
+        .muted { opacity: 0.74; }
+        canvas { width: 600px; height: 630px; display: block; }
+    </style>
+</head>
+<body>
+    <div class="text">
+        <h1>ditherfm</h1>
+        <p>Визуализатор музыки<br>в две краски</p>
+        <div class="foot"><span>dither.mslv.space</span><span class="muted">Nightcore · WAV</span></div>
+    </div>
+    <canvas id="view"></canvas>
+    <script type="module">
+        import { Pipeline, DEFAULT_PARAMS } from '../viz/pipeline.js';
+        import { presetById } from '../viz/presets.js';
+        import { createFeatures } from '../audio/features.js';
+
+        const pipeline = new Pipeline(document.getElementById('view'));
+        pipeline.resize(600, 630, 1, 3);
+        const preset = presetById('tunnel'), features = createFeatures(), s = {};
+        // A fixed run of frames, so the preview is the same every time it is made.
+        for (let i = 0; i < 420; i++) {
+            const a = features.idle(1 / 60), p = { ...DEFAULT_PARAMS, ...preset.base };
+            preset.frame(p, a, i / 60, s);
+            pipeline.render(p, preset.warp, a, i / 60, { ink: '#3F3A39', paper: '#EDF2F4', dither: 'bayer4' });
+        }
+    </script>
+</body>
+</html>
