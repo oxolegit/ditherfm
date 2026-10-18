@@ -6,12 +6,6 @@ A music visualizer in the spirit of MilkDrop and projectM, drawn with two-color 
 
 ![ditherfm](og.png)
 
-![Player interface](docs/interface.png)
-
-![Visualisation recording](docs/demo.gif)
-
-[Recording in MP4](docs/demo.mp4)
-
 ## Features
 
 - **Nightcore.** Speed and pitch change together, like real nightcore. Modes: Original, Nightcore (×1.25), Hyper (×1.4), Daycore (×0.8 with reverb) and manual: speed 0.5–2×, bass boost up to 12 dB, reverb. A limiter on the output keeps the bass from clipping.
@@ -26,6 +20,8 @@ A music visualizer in the spirit of MilkDrop and projectM, drawn with two-color 
 - **Volume** and a mute button; the visuals don't depend on volume, and the WAV is saved at full volume.
 - **Fullscreen**, Media Session (media keys), interface in Russian and English, settings are remembered.
 
+![Visualisation recording](docs/demo.gif)
+
 Hotkeys: Space — pause, ← → — seek, ↑ ↓ — track, − + — volume, M — mute, N — next preset, R — random, L — lock, F — fullscreen.
 
 Requires a browser with WebGL2. Audio from streaming services (Spotify, etc.) isn't accessible to websites, so only files work.
@@ -37,6 +33,8 @@ No build step: it's a static site built on ES modules with no dependencies.
 ```sh
 npx serve .
 ```
+
+![Player interface](docs/interface.png)
 
 Browser-free checks (bands and beats, nightcore settings, WAV, playlist, presets, transitions):
 
