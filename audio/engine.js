@@ -83,7 +83,7 @@ export class Engine {
         this.audio = new Audio();
         this.audio.preload = 'auto';
         this.settings = { ...MODES.nightcore };
-        this.volume = 1;
+        this.volume = 0.5;
         this.muted = false;
         this.ctx = null;
         this.url = null;

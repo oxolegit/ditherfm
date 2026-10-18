@@ -41,7 +41,7 @@ const hex = (v) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v.toLowerCase() : null);
 
 const state = {
     ...MODES.nightcore, palette: 'cv', ink: '#3f3a39', paper: '#edf2f4', dither: DEFAULT_DITHER, px: 3,
-    preset: null, locked: false, repeat: true, volume: 1, muted: false, lang: detectLang(),
+    preset: null, locked: false, repeat: true, volume: 0.5, muted: false, lang: detectLang(),
 };
 
 function loadSettings() {
@@ -56,7 +56,7 @@ function loadSettings() {
     if (typeof s.preset === 'string') state.preset = s.preset;
     state.locked = s.locked === true;
     state.repeat = s.repeat !== false;
-    if (s.volume >= 0 && s.volume <= 1) state.volume = +s.volume;
+    if (s.vol >= 0 && s.vol <= 1) state.volume = +s.vol;
     state.muted = s.muted === true;
 }
 
@@ -64,8 +64,8 @@ let saveTimer = 0;
 function save() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-        const { lang, ...rest } = state;
-        try { localStorage.setItem(KEY, JSON.stringify(rest)); } catch {}
+        const { lang, volume, ...rest } = state;
+        try { localStorage.setItem(KEY, JSON.stringify({ ...rest, vol: volume })); } catch {}
     }, 300);
 }
 
