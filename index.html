@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ditherfm — музыкальный визуализатор в две краски</title>
+    <meta name="description" content="Визуализатор музыки в духе MilkDrop, нарисованный дизерингом в две краски. Загрузите mp3, включите найткор и смотрите.">
+    <meta name="author" content="oxolegit">
+    <meta name="theme-color" content="#EDF2F4">
+    <link rel="canonical" href="https://dither.mslv.space/">
+
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <script type="module" src="/app.js"></script>
+</head>
+<body>
+    <header class="top">
+        <a class="brand" href="/">
+            <img src="/favicon.svg" alt="" width="16" height="16">
+            <span>ditherfm</span>
+            <span class="muted" data-i18n="tagline">Визуализатор музыки в две краски</span>
+        </a>
+        <nav class="langs" data-i18n-attr="aria-label:language" aria-label="Язык">
+            <button type="button" data-lang="ru" aria-pressed="true">RU</button>
+            <button type="button" data-lang="en" aria-pressed="false">EN</button>
+        </nav>
+    </header>
+
+    <main class="app">
+        <aside class="panel" data-i18n-attr="aria-label:settings" aria-label="Настройки">
+            <fieldset>
+                <legend data-i18n="sound">Звук</legend>
+                <div class="seg seg-fill" id="modes">
+                    <button type="button" data-mode="original">Оригинал</button>
+                    <button type="button" data-mode="nightcore">Nightcore</button>
+                    <button type="button" data-mode="hyper">Hyper</button>
+                    <button type="button" data-mode="daycore">Daycore</button>
+                </div>
+                <label class="slider">
+                    <span><span data-i18n="speed">Скорость</span> <output id="rateOut" class="muted"></output></span>
+                    <input type="range" id="rate" min="0.5" max="2" step="0.01">
+                </label>
+                <label class="slider">
+                    <span><span data-i18n="bass">Бас</span> <output id="bassOut" class="muted"></output></span>
+                    <input type="range" id="bass" min="0" max="12" step="0.5">
+                </label>
+                <label class="slider">
+                    <span><span data-i18n="reverb">Реверб</span> <output id="reverbOut" class="muted"></output></span>
+                    <input type="range" id="reverb" min="0" max="1" step="0.01">
+                </label>
+            </fieldset>
+
+            <fieldset>
+                <legend data-i18n="preset">Пресет</legend>
+                <select id="preset" data-i18n-attr="aria-label:preset" aria-label="Пресет"></select>
+                <div class="row">
+                    <button type="button" class="ghost" id="nextPreset" data-i18n="nextPreset">Дальше</button>
+                    <button type="button" class="ghost" id="randomPreset" data-i18n="randomPreset">Случайный</button>
+                    <button type="button" class="ghost toggle" id="lock" aria-pressed="false" data-i18n-attr="title:lockHint" title="Не менять пресет сам"><span data-i18n="lock">Замок</span></button>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend data-i18n="palette">Палитра</legend>
+                <div class="swatches" id="palettes" role="radiogroup" data-i18n-attr="aria-label:palette" aria-label="Палитра"></div>
+                <div class="custom-colors" id="customColors" hidden>
+                    <label><input type="color" id="inkColor" value="#3f3a39"><span data-i18n="ink">Чернила</span></label>
+                    <label><input type="color" id="paperColor" value="#edf2f4"><span data-i18n="paper">Бумага</span></label>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend data-i18n="dither">Дизеринг</legend>
+                <select id="dither" data-i18n-attr="aria-label:dither" aria-label="Дизеринг"></select>
+            </fieldset>
+
+            <fieldset>
+                <legend><span data-i18n="pixel">Пиксель</span> <output id="pxOut" class="muted">3 px</output></legend>
+                <input type="range" id="px" min="1" max="8" step="1" value="3" data-i18n-attr="aria-label:pixel" aria-label="Пиксель">
+            </fieldset>
+
+            <fieldset>
+                <legend data-i18n="export">Экспорт</legend>
+                <button type="button" class="ghost" id="wav" disabled data-i18n="wav">Скачать WAV</button>
+                <p class="note muted" id="wavNote" data-i18n="wavHint">Текущий трек с настройками звука</p>
+            </fieldset>
+        </aside>
+
+        <section class="stage">
+            <div class="frame" id="frame">
+                <canvas id="view" data-i18n-attr="aria-label:visual" aria-label="Визуализация"></canvas>
+                <div class="empty" id="empty">
+                    <p class="empty-title" data-i18n="emptyTitle">Перетащите сюда музыку</p>
+                    <p class="muted" data-i18n="emptyText">mp3, flac, wav, ogg, m4a — файлы не покидают ваш компьютер</p>
+                    <label class="primary"><input type="file" id="files" accept="audio/*,.mp3,.flac,.wav,.ogg,.m4a,.opus" multiple hidden><span data-i18n="choose">Выбрать файлы</span></label>
+                </div>
+                <p class="drop-hint" id="dropHint" data-i18n="dropHere" hidden>Отпустите, чтобы добавить</p>
+                <p class="fail" id="fail" hidden></p>
+            </div>
+
+            <p class="meta" id="meta" aria-live="polite">&nbsp;</p>
+
+            <div class="transport">
+                <button type="button" class="primary" id="play" disabled><span data-i18n="play">Играть</span></button>
+                <button type="button" class="ghost" id="prev" disabled data-i18n="prev">Назад</button>
+                <button type="button" class="ghost" id="next" disabled data-i18n="next">Вперёд</button>
+                <input type="range" id="seek" min="0" max="1" step="0.001" value="0" disabled data-i18n-attr="aria-label:seek" aria-label="Позиция">
+                <output id="time" class="muted">0:00 / 0:00</output>
+                <button type="button" class="ghost" id="fullscreen" data-i18n="fullscreen">Во весь экран</button>
+            </div>
+
+            <div class="queue" id="queue" hidden>
+                <div class="queue-head">
+                    <span data-i18n="playlist">Плейлист</span>
+                    <label class="ghost small"><input type="file" id="moreFiles" accept="audio/*,.mp3,.flac,.wav,.ogg,.m4a,.opus" multiple hidden><span data-i18n="add">Добавить</span></label>
+                    <button type="button" class="ghost small toggle" id="repeat" aria-pressed="true" data-i18n="repeat">Повтор</button>
+                </div>
+                <ol class="tracks" id="tracks"></ol>
+            </div>
+
+            <p class="hint muted" data-i18n="shortcuts">Пробел — пауза · ← → — перемотка · ↑ ↓ — трек · N — пресет · R — случайный · L — замок · F — экран</p>
+        </section>
+    </main>
+
+    <footer class="foot muted">
+        <a href="https://github.com/oxolegit">oxolegit</a>
+        <a href="https://mslv.space">mslv.space</a>
+        <a href="https://bitmap.mslv.space">bitmap</a>
+        <a href="https://github.com/oxolegit/ditherfm" data-i18n="license">Лицензия MIT with Attribution</a>
+    </footer>
+</body>
+</html>
