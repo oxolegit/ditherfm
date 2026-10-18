@@ -57,10 +57,10 @@ export function buildChain(ctx, input, settings) {
     convolver.buffer = impulseResponse(ctx);
 
     const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = -1.5;
+    limiter.threshold.value = -4;
     limiter.knee.value = 0;
     limiter.ratio.value = 20;
-    limiter.attack.value = 0.003;
+    limiter.attack.value = 0.001;
     limiter.release.value = 0.12;
 
     input.connect(bass);
