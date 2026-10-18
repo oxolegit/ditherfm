@@ -135,6 +135,17 @@ export class Engine {
         this.ctx = ctx;
     }
 
+    // The processed sound before the volume, for the video export: muting the speakers does
+    // not silence the recording.
+    tap() {
+        this.ensure();
+        if (!this.dest) {
+            this.dest = this.ctx.createMediaStreamDestination();
+            this.chain.output.connect(this.dest);
+        }
+        return this.dest.stream;
+    }
+
     load(file) {
         if (this.url) URL.revokeObjectURL(this.url);
         this.url = URL.createObjectURL(file);

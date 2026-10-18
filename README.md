@@ -15,6 +15,7 @@ A music visualizer in the spirit of MilkDrop and projectM, drawn with two-color 
 - **Palettes.** Eight two-color pairs from [bitmap](https://bitmap.mslv.space) plus custom colors.
 - **Playlist.** Multiple files, advance to the next track, repeat.
 - **WAV export.** A nightcore version of the current track, rendered through the same chain used for playback.
+- **Video export.** The current track with its visuals, recorded in real time to MP4 (WebM in browsers that cannot write MP4, such as Firefox).
 - **Volume** and a mute button; the visuals don't depend on volume, and the WAV is saved at full volume.
 - **Fullscreen**, Media Session (media keys), interface in Russian and English, settings are remembered.
 
@@ -50,6 +51,7 @@ npm test
 | `viz/presets.js` | hand-made presets |
 | `viz/random.js` | preset from a seed |
 | `viz/director.js` | preset switching and transitions |
+| `viz/record.js` | video recording: canvas and sound to MP4 / WebM |
 | `gen/rng.js`, `gen/bluenoise.js` | seed generator and blue noise map from bitmap |
 | `app.js`, `i18n.js` | interface and translations |
 | `tools/og.html` | page used to capture `og.png` |

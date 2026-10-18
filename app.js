@@ -5,6 +5,7 @@ import { createFeatures } from './audio/features.js';
 import { Playlist } from './audio/playlist.js';
 import { renderTrack } from './audio/wav.js';
 import { Pipeline } from './viz/pipeline.js';
+import { VideoRecorder, pickVideoType } from './viz/record.js';
 import { Director } from './viz/director.js';
 import { PRESETS, presetById } from './viz/presets.js';
 import { makePreset } from './viz/random.js';
@@ -29,7 +30,7 @@ const els = {
     modes: $('modes'), rate: $('rate'), rateOut: $('rateOut'), bass: $('bass'), bassOut: $('bassOut'), reverb: $('reverb'), reverbOut: $('reverbOut'),
     preset: $('preset'), nextPreset: $('nextPreset'), randomPreset: $('randomPreset'), lock: $('lock'),
     palettes: $('palettes'), customColors: $('customColors'), inkColor: $('inkColor'), paperColor: $('paperColor'),
-    dither: $('dither'), px: $('px'), pxOut: $('pxOut'), wav: $('wav'),
+    dither: $('dither'), px: $('px'), pxOut: $('pxOut'), wav: $('wav'), video: $('video'),
     frame: $('frame'), view: $('view'), empty: $('empty'), dropHint: $('dropHint'), fail: $('fail'), files: $('files'), moreFiles: $('moreFiles'),
     meta: $('meta'), play: $('play'), prev: $('prev'), next: $('next'), seek: $('seek'), time: $('time'), fullscreen: $('fullscreen'),
     queue: $('queue'), tracks: $('tracks'), repeat: $('repeat'), volume: $('volume'), mute: $('mute'),
@@ -126,6 +127,7 @@ function addFiles(files) {
 function load(autoplay) {
     const item = playlist.current;
     if (!item) return stop();
+    if (recording) finishVideo();
     engine.load(item.file);
     if (autoplay) play();
     if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: item.name, artist: 'ditherfm' });
@@ -159,6 +161,7 @@ function renderTransport() {
     const has = !!playlist.current;
     els.play.disabled = els.seek.disabled = els.prev.disabled = els.next.disabled = !has;
     els.wav.disabled = !has || exporting;
+    els.video.disabled = !has || !videoType || !pipeline;
     els.play.firstElementChild.textContent = engine.playing ? t().pause : t().play;
     els.play.firstElementChild.dataset.i18n = engine.playing ? 'pause' : 'play';
     els.empty.hidden = has;
@@ -234,11 +237,19 @@ function renderQueue() {
 }
 
 const audio = engine.audio;
-audio.addEventListener('play', renderTransport);
-audio.addEventListener('pause', renderTransport);
+audio.addEventListener('play', () => {
+    recording?.resume();
+    renderTransport();
+});
+audio.addEventListener('pause', () => {
+    recording?.pause();
+    renderTransport();
+});
 audio.addEventListener('timeupdate', renderTime);
 audio.addEventListener('loadedmetadata', renderTime);
 audio.addEventListener('ended', () => {
+    // A recording covers one track: it ends here instead of moving on.
+    if (recording) return finishVideo();
     if (playlist.step(1)) load(true);
     else renderTransport();
 });
@@ -309,6 +320,12 @@ if ('mediaSession' in navigator) {
 // ─── WAV export ─────────────────────────────────────────────────────────────────────
 let exporting = false;
 
+// "Track (nightcore).wav", or the speed for a hand-tuned mix.
+function exportName(item, settings, ext) {
+    const mode = modeOf(settings);
+    return `${item.name} (${mode && mode !== 'original' ? mode : `x${settings.rate.toFixed(2)}`}).${ext}`;
+}
+
 function download(blob, name) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -327,8 +344,7 @@ els.wav.addEventListener('click', async () => {
     label(0);
     try {
         const blob = await renderTrack(item.file, settings, label);
-        const mode = modeOf(settings);
-        download(blob, `${item.name} (${mode && mode !== 'original' ? mode : `x${settings.rate.toFixed(2)}`}).wav`);
+        download(blob, exportName(item, settings, 'wav'));
     } catch {
         fail(t().wavError);
     }
@@ -336,6 +352,57 @@ els.wav.addEventListener('click', async () => {
     els.wav.textContent = t().wav;
     renderTransport();
 });
+
+// ─── Video export ───────────────────────────────────────────────────────────────────
+const videoType = pickVideoType();
+let recording = null;
+
+function renderVideo() {
+    const d = audio.duration;
+    els.video.textContent = recording
+        ? t().videoBusy.replace('{p}', Number.isFinite(d) && d ? Math.round((audio.currentTime / d) * 100) : 0)
+        : t().video.replace('{ext}', (videoType?.ext || 'mp4').toUpperCase());
+    els.video.title = videoType ? '' : t().noVideo;
+    els.video.setAttribute('aria-pressed', String(!!recording));
+}
+
+// From the top of the current track, with the sound and the look as they are now.
+async function startVideo() {
+    const item = playlist.current;
+    if (!item || !videoType || !pipeline || recording) return;
+    try {
+        const sound = engine.tap();
+        engine.pause();
+        engine.seek(0);
+        const rec = new VideoRecorder(els.view, sound, videoType);
+        rec.item = item;
+        rec.settings = { ...engine.settings };
+        recording = rec;
+        rec.start();
+        renderVideo();
+        await engine.play();
+    } catch {
+        recording = null;
+        renderVideo();
+        fail(t().videoError);
+    }
+}
+
+async function finishVideo() {
+    const rec = recording;
+    if (!rec) return;
+    recording = null;
+    engine.pause();
+    renderVideo();
+    try {
+        download(await rec.stop(), exportName(rec.item, rec.settings, videoType.ext));
+    } catch {
+        fail(t().videoError);
+    }
+}
+
+els.video.addEventListener('click', () => (recording ? finishVideo() : startVideo()));
+audio.addEventListener('timeupdate', () => recording && renderVideo());
 
 // ─── Visuals ────────────────────────────────────────────────────────────────────────
 let pipeline = null;
@@ -535,6 +602,7 @@ function setLang(lang) {
     renderQueue();
     renderTransport();
     if (!exporting) els.wav.textContent = t().wav;
+    renderVideo();
 }
 document.querySelectorAll('[data-lang]').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.lang)));
 

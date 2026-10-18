@@ -8,6 +8,7 @@ import { DEFAULT_PARAMS } from '../viz/pipeline.js';
 import { PRESETS } from '../viz/presets.js';
 import { makePreset } from '../viz/random.js';
 import { Director } from '../viz/director.js';
+import { pickVideoType } from '../viz/record.js';
 
 let failed = 0;
 const check = (name, ok, extra = '') => {
@@ -161,6 +162,14 @@ const knownKeys = (preset) => Object.keys(preset.base).every((k) => k in DEFAULT
     const mid = e.update(1, quiet, 0).params.zoom;
     const to = e.update(1.5, quiet, 0).params.zoom;
     check('blend passes between the two presets', mid < from && mid > to, `${from.toFixed(3)} → ${mid.toFixed(3)} → ${to.toFixed(3)}`);
+}
+
+// Video export picks MP4 when the browser can write it, WebM otherwise.
+{
+    const only = (...ok) => (t) => ok.includes(t);
+    check('video prefers mp4', pickVideoType(only('video/webm', 'video/mp4'))?.ext === 'mp4');
+    check('video falls back to webm', pickVideoType(only('video/webm;codecs=vp9,opus'))?.ext === 'webm');
+    check('no recorder, no video', pickVideoType(() => false) === null && pickVideoType() === null);
 }
 
 console.log(failed ? `\n${failed} failed` : '\nall passed');
