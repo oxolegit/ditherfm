@@ -78,6 +78,12 @@ export function buildChain(ctx, input, settings) {
     return { output: limiter, set };
 }
 
+// WebKit (Safari and every browser on iOS) stutters and drops out when a media element source
+// plays at a rate other than 1: the tap between the player and Web Audio falls out of step.
+// There the track is decoded and played from a buffer instead, like the WAV export.
+const WEBKIT = typeof navigator !== 'undefined'
+    && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Android/.test(navigator.userAgent);
+
 export class Engine {
     constructor() {
         this.audio = new Audio();
@@ -87,14 +93,30 @@ export class Engine {
         this.muted = false;
         this.ctx = null;
         this.url = null;
+        // In buffer mode the element stays muted and only keeps the clock, the events and the
+        // media session; the sound comes from a buffer source that follows it.
+        this.buffered = WEBKIT;
+        this.file = null;
+        this.decoding = null;
+        this.buffer = null;
+        this.node = null;
+        if (this.buffered) {
+            this.audio.muted = true;
+            const a = this.audio;
+            a.addEventListener('playing', () => this.startBuffer());
+            a.addEventListener('seeked', () => this.playing && this.startBuffer());
+            a.addEventListener('ratechange', () => this.node?.playbackRate.setTargetAtTime(a.playbackRate, this.ctx.currentTime, 0.02));
+            for (const e of ['pause', 'ended', 'emptied', 'waiting']) a.addEventListener(e, () => this.stopBuffer());
+        }
     }
 
     // The audio graph needs a user gesture in most browsers, so it is built on first play.
     ensure() {
         if (this.ctx) return;
         const ctx = new AudioContext();
-        const source = ctx.createMediaElementSource(this.audio);
-        this.chain = buildChain(ctx, source, this.settings);
+        this.input = ctx.createGain();
+        if (!this.buffered) ctx.createMediaElementSource(this.audio).connect(this.input);
+        this.chain = buildChain(ctx, this.input, this.settings);
 
         // Two analysers, left and right, for stereo scopes; their sum drives the bands.
         const splitter = ctx.createChannelSplitter(2);
@@ -118,13 +140,45 @@ export class Engine {
         this.url = URL.createObjectURL(file);
         this.audio.src = this.url;
         this.applyRate();
+        this.file = file;
+        this.decoding = null;
+        this.buffer = null;
     }
 
     async play() {
         this.ensure();
         if (this.ctx.state === 'suspended') await this.ctx.resume();
+        if (this.buffered) await this.decode();
         this.applyRate();
         return this.audio.play();
+    }
+
+    // Decoded once per track, on first play; a track switched away from meanwhile is dropped.
+    decode() {
+        const file = this.file;
+        if (!file) return Promise.resolve();
+        this.decoding ??= file.arrayBuffer()
+            .then((data) => this.ctx.decodeAudioData(data))
+            .then((buffer) => { if (this.file === file) this.buffer = buffer; });
+        return this.decoding;
+    }
+
+    startBuffer() {
+        this.stopBuffer();
+        if (!this.buffer || !this.ctx) return;
+        const node = this.ctx.createBufferSource();
+        node.buffer = this.buffer;
+        node.playbackRate.value = this.audio.playbackRate;
+        node.connect(this.input);
+        node.start(0, Math.min(this.audio.currentTime, this.buffer.duration));
+        this.node = node;
+    }
+
+    stopBuffer() {
+        if (!this.node) return;
+        try { this.node.stop(); } catch {}
+        this.node.disconnect();
+        this.node = null;
     }
 
     pause() {
