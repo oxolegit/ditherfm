@@ -9,6 +9,7 @@ import { PRESETS } from '../viz/presets.js';
 import { makePreset } from '../viz/random.js';
 import { Director } from '../viz/director.js';
 import { pickVideoType } from '../viz/record.js';
+import { makeSong, sectionAt, hourPlan, onAir, songLength, HOUR } from '../audio/lofi.js';
 
 let failed = 0;
 const check = (name, ok, extra = '') => {
@@ -162,6 +163,28 @@ const knownKeys = (preset) => Object.keys(preset.base).every((k) => k in DEFAULT
     const mid = e.update(1, quiet, 0).params.zoom;
     const to = e.update(1.5, quiet, 0).params.zoom;
     check('blend passes between the two presets', mid < from && mid > to, `${from.toFixed(3)} → ${mid.toFixed(3)} → ${to.toFixed(3)}`);
+}
+
+// Lo-fi FM: songs come from their seed, and the air is the same for anyone at the same moment.
+{
+    const a = makeSong('491234-3'), b = makeSong('491234-3'), c = makeSong('491234-4');
+    check('same seed, same song', JSON.stringify(a) === JSON.stringify(b));
+    check('next slot, another song', JSON.stringify(a) !== JSON.stringify(c));
+    check('lo-fi tempo', a.bpm >= 70 && a.bpm <= 88, `${a.bpm} BPM`);
+    check('chords sit in the keys range', a.chords.every((ch) => ch.notes.every((n) => n >= 52 && n < 64 + 12) && ch.bass >= 36 && ch.bass < 48));
+    const lead = a.lead.flat().filter(Boolean);
+    check('lead stays singable', lead.every((n) => n >= 60 && n <= 96), `${Math.min(...lead)}…${Math.max(...lead)}`);
+    check('form adds up', a.sections.reduce((n, s) => n + s.bars, 0) === a.bars);
+    check('intro has no drums', !sectionAt(a, 0).drums && sectionAt(a, 6).drums);
+
+    const hour = 491234, plan = hourPlan(hour);
+    check('the hour is covered end to end', plan[0].start === hour * HOUR && plan.at(-1).end === (hour + 1) * HOUR
+        && plan.every((s, i) => i === 0 || s.start === plan[i - 1].end), `${plan.length} songs`);
+    const at = hour * HOUR + 1234.5, slot = onAir(at);
+    check('one song on air at a time', slot.start <= at && at < slot.end && slot === onAir(at));
+    check('songs turn over into the next hour', onAir((hour + 1) * HOUR - 0.001).song.seed.startsWith(`${hour}-`)
+        && onAir((hour + 1) * HOUR).song.seed === `${hour + 1}-0`);
+    check('a song lasts a couple of minutes', songLength(a) > 80 && songLength(a) < 180, `${songLength(a).toFixed(0)} s`);
 }
 
 // Video export picks MP4 when the browser can write it, WebM otherwise.

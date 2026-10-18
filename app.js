@@ -33,6 +33,7 @@ const els = {
     dither: $('dither'), px: $('px'), pxOut: $('pxOut'), wav: $('wav'), video: $('video'),
     frame: $('frame'), view: $('view'), empty: $('empty'), dropHint: $('dropHint'), fail: $('fail'), files: $('files'), moreFiles: $('moreFiles'),
     meta: $('meta'), play: $('play'), prev: $('prev'), next: $('next'), seek: $('seek'), time: $('time'), fullscreen: $('fullscreen'),
+    radio: $('radio'), radioStart: $('radioStart'),
     queue: $('queue'), tracks: $('tracks'), repeat: $('repeat'), volume: $('volume'), mute: $('mute'),
 };
 
@@ -120,7 +121,8 @@ function fail(message) {
 function addFiles(files) {
     const hadTrack = !!playlist.current;
     if (!playlist.add(files)) return fail(t().notAudio);
-    if (!hadTrack) load(true);
+    // On the radio new files only join the queue.
+    if (!hadTrack && !engine.radio) load(true);
     renderQueue();
 }
 
@@ -128,6 +130,7 @@ function load(autoplay) {
     const item = playlist.current;
     if (!item) return stop();
     if (recording) finishVideo();
+    if (engine.radio) radioOff();
     engine.load(item.file);
     if (autoplay) play();
     if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: item.name, artist: 'ditherfm' });
@@ -137,10 +140,20 @@ function load(autoplay) {
 }
 
 function play() {
-    engine.play().catch((error) => {
+    engine.play().then(() => {
+        // The radio has no player events of its own.
+        if (engine.radio) recording?.resume(), renderTransport();
+    }, (error) => {
         if (error?.name !== 'AbortError') fail(t().playError);
     });
 }
+
+function pause() {
+    engine.pause();
+    if (engine.radio) recording?.pause(), renderTransport();
+}
+
+const togglePlay = () => (engine.playing ? pause() : play());
 
 function stop() {
     engine.pause();
@@ -152,15 +165,20 @@ function stop() {
 }
 
 function step(dir) {
+    if (engine.radio) return;
     if (dir < 0 && engine.audio.currentTime > 3) return engine.seek(0);
     const wasPlaying = engine.playing;
     if (playlist.step(dir)) load(wasPlaying || dir > 0);
 }
 
 function renderTransport() {
-    const has = !!playlist.current;
-    els.play.disabled = els.seek.disabled = els.prev.disabled = els.next.disabled = !has;
-    els.wav.disabled = !has || exporting;
+    const radio = !!engine.radio, has = !!playlist.current || radio;
+    els.play.disabled = !has;
+    els.seek.disabled = els.prev.disabled = els.next.disabled = !has || radio;
+    els.wav.disabled = !playlist.current || radio || exporting;
+    els.radio.setAttribute('aria-pressed', String(radio));
+    els.rate.disabled = radio;
+    els.rate.title = radio ? t().radioSpeed : '';
     els.video.disabled = !has || !videoType || !pipeline;
     els.play.firstElementChild.textContent = engine.playing ? t().pause : t().play;
     els.play.firstElementChild.dataset.i18n = engine.playing ? 'pause' : 'play';
@@ -194,6 +212,12 @@ els.mute.addEventListener('click', toggleMute);
 
 let seeking = false;
 function renderTime() {
+    const radio = engine.radio;
+    if (radio) {
+        els.seek.value = radio.time / radio.duration;
+        els.time.textContent = `${formatTime(radio.time)} / ${formatTime(radio.duration)}`;
+        return;
+    }
     const a = engine.audio, d = Number.isFinite(a.duration) ? a.duration : 0;
     if (!seeking) els.seek.value = d ? a.currentTime / d : 0;
     // Shown in track time: with nightcore the clock runs faster, as the music does.
@@ -227,7 +251,7 @@ function renderQueue() {
         drop.addEventListener('click', () => {
             const wasCurrent = i === playlist.index, wasPlaying = engine.playing;
             playlist.remove(i);
-            if (wasCurrent) load(wasPlaying);
+            if (wasCurrent && !engine.radio) load(wasPlaying);
             else renderQueue();
         });
         li.append(pick, drop);
@@ -257,7 +281,7 @@ audio.addEventListener('error', () => {
     if (audio.getAttribute('src')) fail(t().playError);
 });
 
-els.play.addEventListener('click', () => (engine.playing ? engine.pause() : play()));
+els.play.addEventListener('click', togglePlay);
 els.prev.addEventListener('click', () => step(-1));
 els.next.addEventListener('click', () => step(1));
 els.seek.addEventListener('input', () => {
@@ -312,7 +336,7 @@ window.addEventListener('drop', (e) => {
 if ('mediaSession' in navigator) {
     const ms = navigator.mediaSession;
     ms.setActionHandler('play', play);
-    ms.setActionHandler('pause', () => engine.pause());
+    ms.setActionHandler('pause', pause);
     ms.setActionHandler('previoustrack', () => step(-1));
     ms.setActionHandler('nexttrack', () => step(1));
 }
@@ -322,6 +346,7 @@ let exporting = false;
 
 // "Track (nightcore).wav", or the speed for a hand-tuned mix.
 function exportName(item, settings, ext) {
+    if (item.radio) return `${item.name}.${ext}`;
     const mode = modeOf(settings);
     return `${item.name} (${mode && mode !== 'original' ? mode : `x${settings.rate.toFixed(2)}`}).${ext}`;
 }
@@ -358,22 +383,27 @@ const videoType = pickVideoType();
 let recording = null;
 
 function renderVideo() {
-    const d = audio.duration;
+    const radio = engine.radio;
+    const d = radio ? radio.duration : audio.duration, now = radio ? radio.time : audio.currentTime;
     els.video.textContent = recording
-        ? t().videoBusy.replace('{p}', Number.isFinite(d) && d ? Math.round((audio.currentTime / d) * 100) : 0)
+        ? t().videoBusy.replace('{p}', Number.isFinite(d) && d ? Math.round((now / d) * 100) : 0)
         : t().video.replace('{ext}', (videoType?.ext || 'mp4').toUpperCase());
     els.video.title = videoType ? '' : t().noVideo;
     els.video.setAttribute('aria-pressed', String(!!recording));
 }
 
-// From the top of the current track, with the sound and the look as they are now.
+// From the top of the current track, with the sound and the look as they are now. The radio
+// cannot be rewound, so there it runs from now to the end of the song on air.
 async function startVideo() {
-    const item = playlist.current;
+    const radio = engine.radio;
+    const item = radio ? { name: `ditherfm lo-fi FM ${radio.song.seed}`, radio: true } : playlist.current;
     if (!item || !videoType || !pipeline || recording) return;
     try {
         const sound = engine.tap();
-        engine.pause();
-        engine.seek(0);
+        if (!radio) {
+            engine.pause();
+            engine.seek(0);
+        }
         const rec = new VideoRecorder(els.view, sound, videoType);
         rec.item = item;
         rec.settings = { ...engine.settings };
@@ -392,7 +422,8 @@ async function finishVideo() {
     const rec = recording;
     if (!rec) return;
     recording = null;
-    engine.pause();
+    // A track stops at its end; the radio plays on.
+    if (!engine.radio) engine.pause();
     renderVideo();
     try {
         download(await rec.stop(), exportName(rec.item, rec.settings, videoType.ext));
@@ -400,6 +431,44 @@ async function finishVideo() {
         fail(t().videoError);
     }
 }
+
+// ─── Radio ──────────────────────────────────────────────────────────────────────────
+function radioOn() {
+    if (recording) finishVideo();
+    const radio = engine.radioOn();
+    radio.onSong = () => {
+        // A radio recording is one song long.
+        if (recording) finishVideo();
+        updateMeta();
+        renderTime();
+    };
+    radio.onBeat = () => {
+        renderTime();
+        if (recording) renderVideo();
+    };
+    if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: t().radioTitle, artist: 'ditherfm' });
+    play();
+    renderQueue();
+    renderTransport();
+    updateMeta();
+}
+
+function radioOff() {
+    if (recording) finishVideo();
+    engine.radioOff();
+    renderTransport();
+    updateMeta();
+}
+
+function toggleRadio() {
+    if (!engine.radio) return radioOn();
+    radioOff();
+    // Back to the queue where it was, paused.
+    if (playlist.current) load(false);
+}
+
+els.radio.addEventListener('click', toggleRadio);
+els.radioStart.addEventListener('click', radioOn);
 
 els.video.addEventListener('click', () => (recording ? finishVideo() : startVideo()));
 audio.addEventListener('timeupdate', () => recording && renderVideo());
@@ -511,7 +580,9 @@ els.px.addEventListener('input', () => {
 function updateMeta() {
     const preset = director.current?.preset;
     const parts = [];
-    if (playlist.current) parts.push(playlist.current.name);
+    const song = engine.radio?.song;
+    if (song) parts.push(t().radioTitle, `${song.chords[0].name} · ${song.bpm} BPM`);
+    else if (playlist.current) parts.push(playlist.current.name);
     if (preset) parts.push(preset.seed ? `seed ${preset.seed}` : preset.name);
     els.meta.textContent = parts.join(' · ') || ' ';
 }
@@ -569,7 +640,7 @@ document.addEventListener('keydown', (e) => {
     if (e.target.closest?.('input, select, textarea')) return;
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     const actions = {
-        ' ': () => playlist.current && (engine.playing ? engine.pause() : play()),
+        ' ': () => (playlist.current || engine.radio) && togglePlay(),
         ArrowLeft: () => engine.seek(audio.currentTime - 5),
         ArrowRight: () => engine.seek(audio.currentTime + 5),
         ArrowUp: () => step(-1),
@@ -579,12 +650,13 @@ document.addEventListener('keydown', (e) => {
         l: toggleLock,
         f: toggleFullscreen,
         m: toggleMute,
+        q: toggleRadio,
         '-': () => setVolume(state.volume - 0.1, false),
         '=': () => setVolume(state.volume + 0.1, false),
         '+': () => setVolume(state.volume + 0.1, false),
     };
     // Same keys on a Russian layout.
-    const ru = { т: 'n', к: 'r', д: 'l', а: 'f', ь: 'm' };
+    const ru = { т: 'n', к: 'r', д: 'l', а: 'f', ь: 'm', й: 'q' };
     const action = actions[key] || actions[ru[key]];
     if (!action) return;
     e.preventDefault();

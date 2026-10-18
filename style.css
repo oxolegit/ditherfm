@@ -339,6 +339,10 @@ input[type="color"] {
     padding: 0.5rem 1rem;
 }
 
+.empty .ghost {
+    pointer-events: auto;
+}
+
 .empty-title {
     font-weight: 500;
     font-size: 1.15rem;

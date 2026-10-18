@@ -16,6 +16,7 @@ A music visualizer in the spirit of MilkDrop and projectM, drawn with two-color 
 - **Playlist.** Multiple files, advance to the next track, repeat.
 - **WAV export.** A nightcore version of the current track, rendered through the same chain used for playback.
 - **Video export.** The current track with its visuals, recorded in real time to MP4 (WebM in browsers that cannot write MP4, such as Firefox).
+- **Lo-fi FM.** A shared generative radio: songs are written from a seed and synthesised in the browser, and what plays is a function of UTC time, so every listener hears the same bar at the same moment. Bass, reverb and the visuals apply; speed stays at ×1 to keep the air in sync.
 - **Volume** and a mute button; the visuals don't depend on volume, and the WAV is saved at full volume.
 - **Fullscreen**, Media Session (media keys), interface in Russian and English, settings are remembered.
 
@@ -45,6 +46,7 @@ npm test
 | `audio/features.js` | bass / mid / treb relative to average, smoothed versions, beats, waveform, spectrum |
 | `audio/playlist.js` | track queue |
 | `audio/wav.js` | offline track rendering and WAV encoder |
+| `audio/lofi.js` | lo-fi FM: songs from a seed, the UTC schedule, synths and the scheduler |
 | `viz/gl.js` | WebGL2 wrappers: programs, buffers, ping-pong |
 | `viz/pipeline.js` | frame: feedback warp → wave → two-color dithering |
 | `viz/dither.js` | dithering thresholds in GLSL |

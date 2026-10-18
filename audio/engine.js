@@ -2,6 +2,8 @@
 // pitch correction), then a bass shelf, reverb and a limiter. The same chain is reused offline
 // for the WAV export, so the download sounds exactly like the preview.
 
+import { LofiRadio } from './lofi.js';
+
 export const MODES = {
     original: { rate: 1, bass: 0, reverb: 0 },
     nightcore: { rate: 1.25, bass: 4, reverb: 0.12 },
@@ -92,6 +94,7 @@ export class Engine {
         this.volume = 0.5;
         this.muted = false;
         this.ctx = null;
+        this.radio = null;
         this.url = null;
         // In buffer mode the element stays muted and only keeps the clock, the events and the
         // media session; the sound comes from a buffer source that follows it.
@@ -146,6 +149,19 @@ export class Engine {
         return this.dest.stream;
     }
 
+    // Lo-fi FM instead of the track: same chain, analysers and volume. The player stays paused.
+    radioOn() {
+        this.ensure();
+        this.audio.pause();
+        this.radio ??= new LofiRadio(this.ctx, this.input);
+        return this.radio;
+    }
+
+    radioOff() {
+        this.radio?.dispose();
+        this.radio = null;
+    }
+
     load(file) {
         if (this.url) URL.revokeObjectURL(this.url);
         this.url = URL.createObjectURL(file);
@@ -159,6 +175,7 @@ export class Engine {
     async play() {
         this.ensure();
         if (this.ctx.state === 'suspended') await this.ctx.resume();
+        if (this.radio) return this.radio.play();
         if (this.buffered) await this.decode();
         this.applyRate();
         return this.audio.play();
@@ -193,11 +210,12 @@ export class Engine {
     }
 
     pause() {
+        if (this.radio) return this.radio.pause();
         this.audio.pause();
     }
 
     seek(t) {
-        if (Number.isFinite(this.audio.duration)) this.audio.currentTime = Math.max(0, Math.min(this.audio.duration, t));
+        if (!this.radio && Number.isFinite(this.audio.duration)) this.audio.currentTime = Math.max(0, Math.min(this.audio.duration, t));
     }
 
     set(settings) {
@@ -229,6 +247,7 @@ export class Engine {
     }
 
     get playing() {
+        if (this.radio) return this.radio.playing;
         return !this.audio.paused && !this.audio.ended;
     }
 }
