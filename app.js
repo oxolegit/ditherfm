@@ -32,7 +32,7 @@ const els = {
     dither: $('dither'), px: $('px'), pxOut: $('pxOut'), wav: $('wav'),
     frame: $('frame'), view: $('view'), empty: $('empty'), dropHint: $('dropHint'), fail: $('fail'), files: $('files'), moreFiles: $('moreFiles'),
     meta: $('meta'), play: $('play'), prev: $('prev'), next: $('next'), seek: $('seek'), time: $('time'), fullscreen: $('fullscreen'),
-    queue: $('queue'), tracks: $('tracks'), repeat: $('repeat'),
+    queue: $('queue'), tracks: $('tracks'), repeat: $('repeat'), volume: $('volume'), mute: $('mute'),
 };
 
 // ─── Settings ───────────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ const hex = (v) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v.toLowerCase() : null);
 
 const state = {
     ...MODES.nightcore, palette: 'cv', ink: '#3f3a39', paper: '#edf2f4', dither: DEFAULT_DITHER, px: 3,
-    preset: null, locked: false, repeat: true, lang: detectLang(),
+    preset: null, locked: false, repeat: true, volume: 1, muted: false, lang: detectLang(),
 };
 
 function loadSettings() {
@@ -56,6 +56,8 @@ function loadSettings() {
     if (typeof s.preset === 'string') state.preset = s.preset;
     state.locked = s.locked === true;
     state.repeat = s.repeat !== false;
+    if (s.volume >= 0 && s.volume <= 1) state.volume = +s.volume;
+    state.muted = s.muted === true;
 }
 
 let saveTimer = 0;
@@ -75,6 +77,7 @@ loadSettings();
 // ─── Audio ──────────────────────────────────────────────────────────────────────────
 const engine = new Engine();
 engine.set(state);
+engine.setVolume(state.volume, state.muted);
 const playlist = new Playlist();
 playlist.repeat = state.repeat;
 const features = createFeatures();
@@ -161,6 +164,30 @@ function renderTransport() {
     els.empty.hidden = has;
     renderTime();
 }
+
+function setVolume(v, muted) {
+    state.volume = Math.max(0, Math.min(1, Math.round(v * 100) / 100));
+    state.muted = muted;
+    engine.setVolume(state.volume, state.muted);
+    renderVolume();
+    save();
+}
+
+function renderVolume() {
+    els.volume.value = state.muted ? 0 : state.volume;
+    els.mute.setAttribute('aria-pressed', String(state.muted || state.volume === 0));
+    els.mute.textContent = state.muted || state.volume === 0 ? t().muted : t().mute;
+    els.volume.title = `${t().volume}: ${state.muted ? 0 : Math.round(state.volume * 100)}%`;
+}
+
+// Moving the slider always unmutes; unmuting from zero comes back at half volume.
+function toggleMute() {
+    const silent = state.muted || state.volume === 0;
+    setVolume(silent ? state.volume || 0.5 : state.volume, !silent);
+}
+
+els.volume.addEventListener('input', () => setVolume(+els.volume.value, false));
+els.mute.addEventListener('click', toggleMute);
 
 let seeking = false;
 function renderTime() {
@@ -484,9 +511,13 @@ document.addEventListener('keydown', (e) => {
         r: () => director.random(),
         l: toggleLock,
         f: toggleFullscreen,
+        m: toggleMute,
+        '-': () => setVolume(state.volume - 0.1, false),
+        '=': () => setVolume(state.volume + 0.1, false),
+        '+': () => setVolume(state.volume + 0.1, false),
     };
     // Same keys on a Russian layout.
-    const ru = { т: 'n', к: 'r', д: 'l', а: 'f' };
+    const ru = { т: 'n', к: 'r', д: 'l', а: 'f', ь: 'm' };
     const action = actions[key] || actions[ru[key]];
     if (!action) return;
     e.preventDefault();
@@ -500,6 +531,7 @@ function setLang(lang) {
     applyStrings(lang);
     buildDithers();
     renderSound();
+    renderVolume();
     renderQueue();
     renderTransport();
     if (!exporting) els.wav.textContent = t().wav;

@@ -83,6 +83,8 @@ export class Engine {
         this.audio = new Audio();
         this.audio.preload = 'auto';
         this.settings = { ...MODES.nightcore };
+        this.volume = 1;
+        this.muted = false;
         this.ctx = null;
         this.url = null;
     }
@@ -104,7 +106,10 @@ export class Engine {
             return a;
         });
         this.chain.output.connect(splitter);
-        this.chain.output.connect(ctx.destination);
+        // Volume sits after the analysers: quieter listening does not dim the visuals.
+        this.gain = ctx.createGain();
+        this.gain.gain.value = this.level;
+        this.chain.output.connect(this.gain).connect(ctx.destination);
         this.ctx = ctx;
     }
 
@@ -145,6 +150,17 @@ export class Engine {
         const a = this.audio;
         a.preservesPitch = a.mozPreservesPitch = a.webkitPreservesPitch = false;
         a.defaultPlaybackRate = a.playbackRate = this.settings.rate;
+    }
+
+    // 0…1, on a squared curve so the slider feels even to the ear.
+    setVolume(v, muted = this.muted) {
+        this.volume = Math.max(0, Math.min(1, +v || 0));
+        this.muted = muted;
+        this.gain?.gain.setTargetAtTime(this.level, this.ctx.currentTime, 0.02);
+    }
+
+    get level() {
+        return this.muted ? 0 : this.volume * this.volume;
     }
 
     get playing() {
